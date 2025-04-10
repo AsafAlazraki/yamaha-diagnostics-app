@@ -13,9 +13,9 @@ from datetime import datetime
 from flask import Flask, render_template, request, send_file, flash, redirect, url_for, jsonify
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['DOWNLOAD_FOLDER'] = 'downloads'
-app.config['SECRET_KEY'] = 'your-secret-key'  # Needed for flashing messages
+app.config['UPLOAD_FOLDER'] = '/tmp/uploads'
+app.config['DOWNLOAD_FOLDER'] = '/tmp/downloads'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key')  # Use environment variable for production
 
 # Ensure upload and download directories exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -74,7 +74,7 @@ def create_bar_graph(speed_ranges, hours, output_path):
     ax.spines['left'].set_color('gray')
     ax.spines['bottom'].set_color('gray')
     plt.tight_layout()
-    plt.savefig(output_path, bbox_inches='tight', dpi=150)
+    plt.savefig(output_path, bbox_inches='tight', dpi=100)  # Reduced DPI for faster rendering
     plt.close()
     print(f"Graph saved to {output_path}")
 
@@ -85,16 +85,19 @@ def process_csv_to_tables(file_path, output_dir):
         current_section = "Metadata"
         customer_name = "Unknown"
         
-        with open(file_path, 'r', encoding='utf-8') as f:
-            reader = csv.reader(f)
-            for row in reader:
-                if not any(row):
-                    continue
-                if is_section_start(row):
-                    current_section = row[0].strip()
-                sections[current_section].append(row)
-                if current_section == "Metadata" and len(row) >= 1 and row[0].strip('"') == "Customer name":
-                    customer_name = row[2].strip('"') if len(row) > 2 and row[2].strip('"') else row[1].strip('"') if len(row) > 1 and row[1].strip('"') else "Unknown"
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if not any(row):
+                        continue
+                    if is_section_start(row):
+                        current_section = row[0].strip()
+                    sections[current_section].append(row)
+                    if current_section == "Metadata" and len(row) >= 1 and row[0].strip('"') == "Customer name":
+                        customer_name = row[2].strip('"') if len(row) > 2 and row[2].strip('"') else row[1].strip('"') if len(row) > 1 and row[1].strip('"') else "Unknown"
+        except csv.Error as e:
+            raise Exception(f"Error parsing CSV file: {str(e)}")
 
         print("CSV file read successfully. Creating Word document...")
 
@@ -104,12 +107,15 @@ def process_csv_to_tables(file_path, output_dir):
         output_file = os.path.join(output_dir, output_filename)
         print(f"Output file will be saved as: {output_file}")
 
+        # Extract Total Engine Hours from "1. Engine operating hours according to engine speed"
         total_engine_hours = "(empty)"
-        if "6. Engine record" in sections:
-            for row in sections["6. Engine record"]:
-                if len(row) >= 1 and row[0].strip('"') == "Engine operating hours":
-                    total_engine_hours = row[2].strip('"') if len(row) > 2 and row[2].strip('"') else row[1].strip('"') if len(row) > 1 and row[1].strip('"') else "(empty)"
+        if "1. Engine operating hours according to engine speed" in sections:
+            print("Section 1 data:", sections["1. Engine operating hours according to engine speed"])
+            for row in sections["1. Engine operating hours according to engine speed"]:
+                if len(row) >= 1 and row[0].strip('"') == "Total operating hours":
+                    total_engine_hours = row[2].strip('"').strip() if len(row) > 2 and row[2].strip('"') else row[1].strip('"').strip() if len(row) > 1 and row[1].strip('"') else "(empty)"
                     break
+        print(f"Total Engine Hours extracted: {total_engine_hours}")
 
         doc = Document()
         section = doc.sections[0]
@@ -175,10 +181,13 @@ def process_csv_to_tables(file_path, output_dir):
                     paragraph = cell.paragraphs[0]
                     run_field = paragraph.add_run(f"{field}: ")
                     run_field.bold = True
+                    run_field.font.size = Pt(8)
                     run_value = paragraph.add_run(value)
                     run_value.bold = False
+                    run_value.font.size = Pt(8)
                     paragraph.space_after = Pt(2)
                     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
                     if row_idx == num_rows - 1:
                         for col in range(2):
                             cell = table.cell(row_idx, col)
@@ -206,10 +215,13 @@ def process_csv_to_tables(file_path, output_dir):
                 for row in sections["1. Engine operating hours according to engine speed"]:
                     if len(row) >= 2 and "r/min" in row[0]:
                         speed_range = row[0].strip('"')
-                        hour = float(row[2].strip('"') if len(row) > 2 and row[2].strip('"') else "0")
-                        if hour > 0:
-                            speed_ranges.append(speed_range)
-                            hours.append(hour)
+                        try:
+                            hour = float(row[2].strip('"') if len(row) > 2 and row[2].strip('"') else "0")
+                            if hour > 0:
+                                speed_ranges.append(speed_range)
+                                hours.append(hour)
+                        except ValueError:
+                            print(f"Warning: Could not convert '{row[2]}' to float in Section 1")
 
             if speed_ranges and hours:
                 graph_path = os.path.join(output_dir, "engine_hours_graph.png")
@@ -528,6 +540,11 @@ def index():
 
 @app.route('/process', methods=['POST'])
 def process():
+    # Set max file size to 5MB
+    max_file_size = 5 * 1024 * 1024  # 5MB in bytes
+    if int(request.headers.get('Content-Length', 0)) > max_file_size:
+        return jsonify({'success': False, 'message': 'File too large. Maximum size is 5MB.'}), 400
+
     if 'file' not in request.files:
         return jsonify({'success': False, 'message': 'No file part in the request.'}), 400
 
@@ -581,4 +598,4 @@ def serve_logo():
         return "Logo not found", 404
 
 if __name__ == '__main__':
-    app.run()  # Modified for production
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
