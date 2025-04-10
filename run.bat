@@ -1,0 +1,3 @@
+'echo "Setup complete! To run the app, type '\''./run.sh'\'' or '\''python app.py'\'' in the terminal."'  @echo off 
+echo Starting the Yamaha Diagnostics Report Generator... 
+python app.py 

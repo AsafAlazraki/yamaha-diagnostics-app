@@ -1,0 +1,6 @@
+pause  '#!/bin/bash' 
+'echo "Setting up the Yamaha Diagnostics Report Generator..."' 
+'echo "Creating directories..."' 
+'mkdir -p templates uploads downloads' 
+'echo "Installing dependencies..."' 
+'pip install -r requirements.txt' 

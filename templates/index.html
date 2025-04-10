@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yamaha Diagnostics Report Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f4f4f4;
+            margin: 0;
+            background-image: url('/logo');
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: 50%;
+            background-attachment: fixed;
+            opacity: 0.9;
+        }
+        .container {
+            background-color: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 600px;
+            width: 100%;
+        }
+        h1 {
+            color: #333;
+        }
+        .instructions {
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #555;
+        }
+        .instructions a {
+            color: #4CAF50;
+            text-decoration: none;
+        }
+        .instructions a:hover {
+            text-decoration: underline;
+        }
+        .upload-form {
+            margin-bottom: 20px;
+        }
+        input[type="file"] {
+            margin: 10px 0;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .reset-button {
+            background-color: #f44336;
+        }
+        .reset-button:hover {
+            background-color: #da190b;
+        }
+        .download-section {
+            margin-top: 20px;
+            display: none;
+        }
+        .download-section a {
+            color: #4CAF50;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .download-section a:hover {
+            text-decoration: underline;
+        }
+        .message {
+            color: red;
+            margin-bottom: 10px;
+            display: none;
+        }
+        .spinner {
+            display: none;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4CAF50;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .help-section {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #555;
+        }
+        .help-section h3 {
+            margin-bottom: 10px;
+        }
+        .help-section ul {
+            list-style-type: none;
+            padding: 0;
+            text-align: left;
+            display: inline-block;
+        }
+        .help-section li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Yamaha Diagnostics Report Generator</h1>
+        <div class="instructions">
+            <p>Upload a Yamaha diagnostic CSV file to generate a detailed report in Word format.</p>
+            <p>Not sure what to upload? <a href="/sample-csv" download>Download a sample CSV file</a> to test the app.</p>
+        </div>
+        <p class="message" id="error-message"></p>
+        <form class="upload-form" id="upload-form">
+            <input type="file" name="file" id="file-input" accept=".csv" required>
+            <br>
+            <button type="submit">Upload and Process</button>
+        </form>
+        <div class="spinner" id="spinner"></div>
+        <div class="download-section" id="download-section">
+            <p>Upload complete! Press here to download the document:</p>
+            <a id="download-link" href="#">Download Report</a>
+            <button class="reset-button" onclick="resetForm()">Reset</button>
+        </div>
+        <div class="help-section">
+            <h3>Help & FAQs</h3>
+            <ul>
+                <li><strong>What file should I upload?</strong> Upload a CSV file exported from the Yamaha Diagnostic System.</li>
+                <li><strong>What happens after I upload?</strong> The app will process your file and generate a Word document with charts and tables.</li>
+                <li><strong>I got an error. What should I do?</strong> Ensure your file is a valid CSV and try again. Contact support if the issue persists.</li>
+                <li><strong>Can I upload multiple files?</strong> Currently, the app processes one file at a time. Use the Reset button to upload another file.</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('upload-form').addEventListener('submit', async function(event) {
+            event.preventDefault(); // Prevent default form submission
+
+            // Show the spinner and hide any previous messages or download section
+            document.getElementById('spinner').style.display = 'block';
+            document.getElementById('error-message').style.display = 'none';
+            document.getElementById('download-section').style.display = 'none';
+
+            // Create FormData object to send the file
+            const formData = new FormData(this);
+
+            try {
+                // Send the file to the /process endpoint
+                const response = await fetch('/process', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                // Hide the spinner
+                document.getElementById('spinner').style.display = 'none';
+
+                if (result.success) {
+                    // Show the download section with the correct URL
+                    const downloadLink = document.getElementById('download-link');
+                    downloadLink.href = result.download_url;
+                    document.getElementById('download-section').style.display = 'block';
+                } else {
+                    // Show user-friendly error message
+                    let message = result.message;
+                    if (message.includes("No file part")) {
+                        message = "Please select a file to upload.";
+                    } else if (message.includes("No file selected")) {
+                        message = "Please select a file to upload.";
+                    } else if (message.includes("valid CSV")) {
+                        message = "Please upload a CSV file. Other file types are not supported.";
+                    } else if (message.includes("Error processing file")) {
+                        message = "There was an issue processing your file. Please ensure it's a valid Yamaha diagnostic CSV and try again.";
+                    }
+                    document.getElementById('error-message').textContent = message;
+                    document.getElementById('error-message').style.display = 'block';
+                }
+            } catch (error) {
+                // Handle network or other errors
+                document.getElementById('spinner').style.display = 'none';
+                document.getElementById('error-message').textContent = 'An unexpected error occurred. Please try again or contact support.';
+                document.getElementById('error-message').style.display = 'block';
+            }
+        });
+
+        function resetForm() {
+            // Hide the download section and error message
+            document.getElementById('download-section').style.display = 'none';
+            document.getElementById('error-message').style.display = 'none';
+            
+            // Reset the file input
+            const fileInput = document.getElementById('file-input');
+            fileInput.value = ''; // Clear the selected file
+        }
+    </script>
+</body>
+</html>
