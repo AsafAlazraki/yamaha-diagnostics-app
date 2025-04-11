@@ -149,15 +149,6 @@
             box-shadow: 0 6px 20px rgba(255, 51, 51, 0.5);
         }
 
-        .reset-button {
-            background: linear-gradient(90deg, #666, #555);
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-        }
-
-        .reset-button:hover {
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
-        }
-
         .download-section {
             margin-top: 25px;
             display: none;
@@ -175,18 +166,41 @@
         .download-section p {
             color: #1e3c72;
             font-size: 16px;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
         }
 
-        .download-section a {
-            color: #ff3333;
-            text-decoration: none;
-            font-weight: 500;
+        .download-section .download-button {
+            display: inline-block;
+            background: linear-gradient(90deg, #2a5298, #1e3c72);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 25px;
             font-size: 16px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            text-decoration: none;
+            transition: transform 0.2s ease, box-shadow 0.3s ease;
+            box-shadow: 0 4px 15px rgba(42, 82, 152, 0.3);
+        }
+
+        .download-section .download-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(42, 82, 152, 0.5);
+        }
+
+        .download-section .reset-link {
+            display: block;
+            margin-top: 10px;
+            color: #ff3333;
+            font-size: 14px;
+            font-weight: 500;
+            text-decoration: none;
             transition: color 0.3s ease;
         }
 
-        .download-section a:hover {
+        .download-section .reset-link:hover {
             color: #e60000;
             text-decoration: underline;
         }
@@ -262,7 +276,6 @@
         <h1>Yamaha Diagnostics Report Generator</h1>
         <div class="instructions">
             <p>Transform your Yamaha diagnostic data into a stunning Word report with charts and insights.</p>
-            <p>Not sure what to upload? <a href="/sample-csv" download>Download a Sample CSV</a></p>
         </div>
         <p class="message" id="error-message"></p>
         <form class="upload-form" id="upload-form">
@@ -273,8 +286,8 @@
         <div class="spinner" id="spinner"></div>
         <div class="download-section" id="download-section">
             <p>Your report is ready! Click below to download:</p>
-            <a id="download-link" href="#">Download Report</a>
-            <button class="reset-button" onclick="resetForm()">Reset</button>
+            <a id="download-link" href="#" class="download-button">Download Report</a>
+            <a href="#" class="reset-link" onclick="resetForm(); return false;">Reset</a>
         </div>
         <div class="help-section">
             <h3>Help & FAQs</h3>
