@@ -1,57 +1,21 @@
 import csv
 from collections import defaultdict
 from docx import Document
-from docx.oxml.ns import qn
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.shared import Inches, Pt, RGBColor
-from docx.table import _Cell
-from docx.oxml import OxmlElement
 import matplotlib.pyplot as plt
 import os
 from datetime import datetime
-from flask import Flask, render_template, request, send_file, flash, redirect, url_for, jsonify
+from flask import Flask, render_template, request, send_file, jsonify
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = '/tmp/uploads'
 app.config['DOWNLOAD_FOLDER'] = '/tmp/downloads'
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key')  # Use environment variable for production
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key')
 
 # Ensure upload and download directories exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['DOWNLOAD_FOLDER'], exist_ok=True)
-
-# Your existing functions (unchanged)
-def set_cell_border(cell: _Cell, border_type="dashed", **kwargs):
-    tcPr = cell._element.get_or_add_tcPr()
-    for border_name in ["top", "left", "bottom", "right"]:
-        if kwargs.get(border_name, False):
-            border = OxmlElement(f"w:{border_name}")
-            border.set(qn("w:val"), border_type)
-            border.set(qn("w:sz"), "4")
-            border.set(qn("w:space"), "0")
-            border.set(qn("w:color"), "auto")
-            tcPr.append(border)
-
-def set_table_inside_borders(table):
-    tbl = table._element
-    tblPr = tbl.xpath("w:tblPr")[0]
-    tblBorders = OxmlElement("w:tblBorders")
-    for border_name in ["top", "left", "bottom", "right"]:
-        border = OxmlElement(f"w:{border_name}")
-        border.set(qn("w:val"), "none")
-        tblBorders.append(border)
-    insideH = OxmlElement("w:insideH")
-    insideH.set(qn("w:val"), "single")
-    insideH.set(qn("w:sz"), "4")
-    insideH.set(qn("w:color"), "auto")
-    tblBorders.append(insideH)
-    insideV = OxmlElement("w:insideV")
-    insideV.set(qn("w:val"), "single")
-    insideV.set(qn("w:sz"), "4")
-    insideV.set(qn("w:color"), "auto")
-    tblBorders.append(insideV)
-    tblPr.append(tblBorders)
 
 def is_section_start(row):
     return len(row) > 0 and row[0].startswith(tuple(str(i) + '.' for i in range(1, 8)))
@@ -74,7 +38,7 @@ def create_bar_graph(speed_ranges, hours, output_path):
     ax.spines['left'].set_color('gray')
     ax.spines['bottom'].set_color('gray')
     plt.tight_layout()
-    plt.savefig(output_path, bbox_inches='tight', dpi=100)  # Reduced DPI for faster rendering
+    plt.savefig(output_path, bbox_inches='tight', dpi=100)
     plt.close()
     print(f"Graph saved to {output_path}")
 
@@ -169,11 +133,7 @@ def process_csv_to_tables(file_path, output_dir):
             if metadata_entries:
                 num_rows = (len(metadata_entries) + 1) // 2
                 table = doc.add_table(rows=num_rows, cols=2)
-                table.style = None
-                table.autofit = False
-                table.columns[0].width = Inches(3.0)
-                table.columns[1].width = Inches(3.0)
-                table.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                table.style = 'Table Grid'  # Use Word's default table style
                 for idx, (field, value) in enumerate(metadata_entries):
                     row_idx = idx // 2
                     col_idx = idx % 2
@@ -186,18 +146,11 @@ def process_csv_to_tables(file_path, output_dir):
                     run_value.bold = False
                     run_value.font.size = Pt(8)
                     paragraph.space_after = Pt(2)
-                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
-                    if row_idx == num_rows - 1:
-                        for col in range(2):
-                            cell = table.cell(row_idx, col)
-                            set_cell_border(cell, border_type="dashed", bottom=True)
 
         if "1. Engine operating hours according to engine speed" in sections or "2. Record of engine oil exchange" in sections or "6. Engine record" in sections:
             content_table = doc.add_table(rows=1, cols=2)
-            content_table.autofit = False
-            content_table.columns[0].width = Inches(3.5)
-            content_table.columns[1].width = Inches(2.5)
+            content_table.style = 'Table Grid'  # Use Word's default table style
+            content_table.autofit = True
 
             cell_left = content_table.cell(0, 0)
             heading_paragraph = cell_left.add_paragraph()
@@ -253,32 +206,21 @@ def process_csv_to_tables(file_path, output_dir):
 
             if has_data:
                 sub_table = cell_right.add_table(rows=1, cols=2)
-                sub_table.autofit = False
-                sub_table.columns[0].width = Inches(0.4)
-                sub_table.columns[1].width = Inches(0.8)
-                sub_table.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                set_table_inside_borders(sub_table)
+                sub_table.style = 'Table Grid'  # Use Word's default table style
+                sub_table.autofit = True
                 hdr_cells = sub_table.rows[0].cells
                 hdr_cells[0].text = "Time"
                 hdr_cells[0].paragraphs[0].runs[0].bold = True
                 hdr_cells[0].paragraphs[0].runs[0].font.size = Pt(8)
-                hdr_cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                hdr_cells[0].vertical_alignment = WD_ALIGN_VERTICAL.CENTER
                 hdr_cells[1].text = "Engine Hours"
                 hdr_cells[1].paragraphs[0].runs[0].bold = True
                 hdr_cells[1].paragraphs[0].runs[0].font.size = Pt(8)
-                hdr_cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                hdr_cells[1].vertical_alignment = WD_ALIGN_VERTICAL.CENTER
                 for time, data in table_data:
                     row_cells = sub_table.add_row().cells
                     row_cells[0].text = time
                     row_cells[0].paragraphs[0].runs[0].font.size = Pt(8)
-                    row_cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    row_cells[0].vertical_alignment = WD_ALIGN_VERTICAL.CENTER
                     row_cells[1].text = data
                     row_cells[1].paragraphs[0].runs[0].font.size = Pt(8)
-                    row_cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    row_cells[1].vertical_alignment = WD_ALIGN_VERTICAL.CENTER
             else:
                 no_data_paragraph = cell_right.add_paragraph("No engine oil exchange records to display.")
                 no_data_paragraph.runs[0].font.size = Pt(8)
@@ -304,32 +246,21 @@ def process_csv_to_tables(file_path, output_dir):
 
                 if has_data:
                     sub_table = cell_right.add_table(rows=1, cols=2)
-                    sub_table.autofit = False
-                    sub_table.columns[0].width = Inches(1.2)
-                    sub_table.columns[1].width = Inches(0.4)
-                    sub_table.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    set_table_inside_borders(sub_table)
+                    sub_table.style = 'Table Grid'  # Use Word's default table style
+                    sub_table.autofit = True
                     hdr_cells = sub_table.rows[0].cells
                     hdr_cells[0].text = "Data Item"
                     hdr_cells[0].paragraphs[0].runs[0].bold = True
                     hdr_cells[0].paragraphs[0].runs[0].font.size = Pt(8)
-                    hdr_cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    hdr_cells[0].vertical_alignment = WD_ALIGN_VERTICAL.CENTER
                     hdr_cells[1].text = "Value"
                     hdr_cells[1].paragraphs[0].runs[0].bold = True
                     hdr_cells[1].paragraphs[0].runs[0].font.size = Pt(8)
-                    hdr_cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    hdr_cells[1].vertical_alignment = WD_ALIGN_VERTICAL.CENTER
                     for item, value in table_data:
                         row_cells = sub_table.add_row().cells
                         row_cells[0].text = item
                         row_cells[0].paragraphs[0].runs[0].font.size = Pt(8)
-                        row_cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                        row_cells[0].vertical_alignment = WD_ALIGN_VERTICAL.CENTER
                         row_cells[1].text = value
                         row_cells[1].paragraphs[0].runs[0].font.size = Pt(8)
-                        row_cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                        row_cells[1].vertical_alignment = WD_ALIGN_VERTICAL.CENTER
                 else:
                     no_data_paragraph = cell_right.add_paragraph("No engine records to display.")
                     no_data_paragraph.runs[0].font.size = Pt(8)
@@ -358,11 +289,8 @@ def process_csv_to_tables(file_path, output_dir):
 
             if has_data:
                 table = doc.add_table(rows=1, cols=3)
-                table.autofit = False
-                table.columns[0].width = Inches(2.0)
-                table.columns[1].width = Inches(2.0)
-                table.columns[2].width = Inches(1.0)
-                set_table_inside_borders(table)
+                table.style = 'Table Grid'  # Use Word's default table style
+                table.autofit = True
                 hdr_cells = table.rows[0].cells
                 hdr_cells[0].text = "Item"
                 hdr_cells[0].paragraphs[0].runs[0].bold = True
@@ -399,10 +327,8 @@ def process_csv_to_tables(file_path, output_dir):
 
             if has_data:
                 table = doc.add_table(rows=1, cols=2)
-                table.autofit = False
-                table.columns[0].width = Inches(3.0)
-                table.columns[1].width = Inches(2.0)
-                set_table_inside_borders(table)
+                table.style = 'Table Grid'  # Use Word's default table style
+                table.autofit = True
                 hdr_cells = table.rows[0].cells
                 hdr_cells[0].text = "Monitor Item"
                 hdr_cells[0].paragraphs[0].runs[0].bold = True
@@ -445,12 +371,8 @@ def process_csv_to_tables(file_path, output_dir):
 
             if has_data:
                 table = doc.add_table(rows=1, cols=4)
-                table.autofit = False
-                table.columns[0].width = Inches(1.5)
-                table.columns[1].width = Inches(1.5)
-                table.columns[2].width = Inches(1.5)
-                table.columns[3].width = Inches(1.0)
-                set_table_inside_borders(table)
+                table.style = 'Table Grid'  # Use Word's default table style
+                table.autofit = True
                 hdr_cells = table.rows[0].cells
                 hdr_cells[0].text = "Item"
                 hdr_cells[0].paragraphs[0].runs[0].bold = True
@@ -497,15 +419,8 @@ def process_csv_to_tables(file_path, output_dir):
 
             if has_data:
                 table = doc.add_table(rows=1, cols=7)
-                table.autofit = False
-                table.columns[0].width = Inches(1.0)
-                table.columns[1].width = Inches(0.5)
-                table.columns[2].width = Inches(1.0)
-                table.columns[3].width = Inches(1.0)
-                table.columns[4].width = Inches(1.0)
-                table.columns[5].width = Inches(1.0)
-                table.columns[6].width = Inches(1.0)
-                set_table_inside_borders(table)
+                table.style = 'Table Grid'  # Use Word's default table style
+                table.autofit = True
                 hdr_cells = table.rows[0].cells
                 headers = ["Time", "Unit", "Engine Speed [r/min]", "Battery Voltage [V]", 
                            "TPS Voltage [V]", "Cooling Water Temp [°C]", "Intake Air Pressure [kPa]"]
@@ -540,8 +455,7 @@ def index():
 
 @app.route('/process', methods=['POST'])
 def process():
-    # Set max file size to 5MB
-    max_file_size = 5 * 1024 * 1024  # 5MB in bytes
+    max_file_size = 5 * 1024 * 1024
     if int(request.headers.get('Content-Length', 0)) > max_file_size:
         return jsonify({'success': False, 'message': 'File too large. Maximum size is 5MB.'}), 400
 
@@ -553,16 +467,13 @@ def process():
         return jsonify({'success': False, 'message': 'No file selected.'}), 400
 
     if file and file.filename.endswith('.csv'):
-        # Save the uploaded file
         upload_path = os.path.join(app.config['UPLOAD_FOLDER'], 'uploaded.csv')
         file.save(upload_path)
 
         try:
-            # Process the file and generate the Word document
             output_file = process_csv_to_tables(upload_path, app.config['DOWNLOAD_FOLDER'])
             output_filename = os.path.basename(output_file)
 
-            # Clean up: Remove old files in downloads folder except the current one
             for f in os.listdir(app.config['DOWNLOAD_FOLDER']):
                 f_path = os.path.join(app.config['DOWNLOAD_FOLDER'], f)
                 if f_path != output_file:
@@ -572,10 +483,8 @@ def process():
                     except:
                         pass
 
-            # Clean up: Remove the uploaded file
             os.remove(upload_path)
 
-            # Return the download URL
             download_url = url_for('download_file', filename=output_filename)
             return jsonify({'success': True, 'download_url': download_url})
         except Exception as e:
@@ -588,7 +497,6 @@ def download_file(filename):
     file_path = os.path.join(app.config['DOWNLOAD_FOLDER'], filename)
     return send_file(file_path, as_attachment=True)
 
-# Route to serve the logo file
 @app.route('/logo')
 def serve_logo():
     logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
