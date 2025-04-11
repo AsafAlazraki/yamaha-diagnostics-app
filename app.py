@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import os
 from datetime import datetime
 from flask import Flask, render_template, request, send_file, jsonify
+from werkzeug.urls import url_quote
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = '/tmp/uploads'
@@ -22,25 +23,29 @@ def is_section_start(row):
 
 def create_bar_graph(speed_ranges, hours, output_path):
     print("Creating bar graph...")
-    plt.figure(figsize=(5.5, 4.0), facecolor='white')
-    bars = plt.bar(speed_ranges, hours, color='#4C78A8', edgecolor='black', linewidth=1.2, alpha=0.9, width=0.5)
-    plt.xlabel("Engine Speed Range (r/min)", fontsize=10, labelpad=15, fontweight='bold')
-    plt.ylabel("Hours", fontsize=10, labelpad=15, fontweight='bold')
-    plt.xticks(rotation=45, ha='right', fontsize=8)
-    plt.yticks(fontsize=8)
-    plt.grid(True, axis='y', linestyle='--', alpha=0.7, color='gray')
-    for bar in bars:
-        yval = bar.get_height()
-        plt.text(bar.get_x() + bar.get_width()/2, yval + 0.5, f'{yval}', ha='center', va='bottom', fontsize=8, fontweight='bold')
-    ax = plt.gca()
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_color('gray')
-    ax.spines['bottom'].set_color('gray')
-    plt.tight_layout()
-    plt.savefig(output_path, bbox_inches='tight', dpi=100)
-    plt.close()
-    print(f"Graph saved to {output_path}")
+    try:
+        plt.figure(figsize=(5.5, 4.0), facecolor='white')
+        bars = plt.bar(speed_ranges, hours, color='#4C78A8', edgecolor='black', linewidth=1.2, alpha=0.9, width=0.5)
+        plt.xlabel("Engine Speed Range (r/min)", fontsize=10, labelpad=15, fontweight='bold')
+        plt.ylabel("Hours", fontsize=10, labelpad=15, fontweight='bold')
+        plt.xticks(rotation=45, ha='right', fontsize=8)
+        plt.yticks(fontsize=8)
+        plt.grid(True, axis='y', linestyle='--', alpha=0.7, color='gray')
+        for bar in bars:
+            yval = bar.get_height()
+            plt.text(bar.get_x() + bar.get_width()/2, yval + 0.5, f'{yval}', ha='center', va='bottom', fontsize=8, fontweight='bold')
+        ax = plt.gca()
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_color('gray')
+        ax.spines['bottom'].set_color('gray')
+        plt.tight_layout()
+        plt.savefig(output_path, bbox_inches='tight', dpi=100)
+        plt.close()
+        print(f"Graph saved to {output_path}")
+    except Exception as e:
+        print(f"Error creating bar graph: {str(e)}")
+        raise
 
 def process_csv_to_tables(file_path, output_dir):
     try:
@@ -52,21 +57,37 @@ def process_csv_to_tables(file_path, output_dir):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 reader = csv.reader(f)
-                for row in reader:
-                    if not any(row):
-                        continue
-                    if is_section_start(row):
-                        current_section = row[0].strip()
-                    sections[current_section].append(row)
-                    if current_section == "Metadata" and len(row) >= 1 and row[0].strip('"') == "Customer name":
-                        customer_name = row[2].strip('"') if len(row) > 2 and row[2].strip('"') else row[1].strip('"') if len(row) > 1 and row[1].strip('"') else "Unknown"
+                csv_rows = list(reader)  # Read all rows into memory for validation
+                print(f"Total CSV rows read: {len(csv_rows)}")
+                if not csv_rows:
+                    raise ValueError("CSV file is empty")
+        except UnicodeDecodeError as e:
+            print(f"UnicodeDecodeError while reading CSV: {str(e)}")
+            raise Exception(f"Failed to read CSV file due to encoding issue: {str(e)}")
         except csv.Error as e:
+            print(f"CSV parsing error: {str(e)}")
             raise Exception(f"Error parsing CSV file: {str(e)}")
+        except Exception as e:
+            print(f"Unexpected error while reading CSV: {str(e)}")
+            raise Exception(f"Failed to read CSV file: {str(e)}")
+
+        # Validate CSV structure
+        for i, row in enumerate(csv_rows):
+            print(f"Row {i + 1}: {row}")
+            if not any(row):  # Skip empty rows
+                continue
+            if is_section_start(row):
+                current_section = row[0].strip()
+                print(f"Detected section: {current_section}")
+            sections[current_section].append(row)
+            if current_section == "Metadata" and len(row) >= 1 and row[0].strip('"') == "Customer name":
+                customer_name = row[2].strip('"') if len(row) > 2 and row[2].strip('"') else row[1].strip('"') if len(row) > 1 and row[1].strip('"') else "Unknown"
+                print(f"Customer name extracted: {customer_name}")
 
         print("CSV file read successfully. Creating Word document...")
 
         today = datetime.now().strftime("%d-%m-%y")
-        safe_customer_name = customer_name.replace(" ", "_")
+        safe_customer_name = customer_name.replace(" ", "_").replace("/", "_").replace("\\", "_")  # Sanitize filename
         output_filename = f"{safe_customer_name}_Yamaha_Diagnostics_Report_{today}.docx"
         output_file = os.path.join(output_dir, output_filename)
         print(f"Output file will be saved as: {output_file}")
@@ -141,7 +162,7 @@ def process_csv_to_tables(file_path, output_dir):
                 print(f"Creating Metadata table with {len(metadata_entries)} entries")
                 num_rows = (len(metadata_entries) + 1) // 2
                 table = doc.add_table(rows=num_rows, cols=2)
-                # Removed table.style = 'Table Grid' to test if this is the issue
+                table.style = 'Table Grid'  # Reintroduce since we know this style exists
                 table.autofit = True
                 for idx, (field, value) in enumerate(metadata_entries):
                     row_idx = idx // 2
@@ -159,7 +180,7 @@ def process_csv_to_tables(file_path, output_dir):
         if "1. Engine operating hours according to engine speed" in sections or "2. Record of engine oil exchange" in sections or "6. Engine record" in sections:
             print("Processing Engine Operating Hours and related sections...")
             content_table = doc.add_table(rows=1, cols=2)
-            # Removed table.style = 'Table Grid'
+            content_table.style = 'Table Grid'
             content_table.autofit = True
 
             cell_left = content_table.cell(0, 0)
@@ -183,8 +204,9 @@ def process_csv_to_tables(file_path, output_dir):
                             if hour > 0:
                                 speed_ranges.append(speed_range)
                                 hours.append(hour)
-                        except ValueError:
-                            print(f"Warning: Could not convert '{row[2]}' to float in Section 1")
+                        except ValueError as e:
+                            print(f"Warning: Could not convert '{row[2]}' to float in Section 1: {str(e)}")
+                            continue
 
             if speed_ranges and hours:
                 graph_path = os.path.join(output_dir, "engine_hours_graph.png")
@@ -216,7 +238,7 @@ def process_csv_to_tables(file_path, output_dir):
 
             if has_data:
                 sub_table = cell_right.add_table(rows=1, cols=2)
-                # Removed table.style = 'Table Grid'
+                sub_table.style = 'Table Grid'
                 sub_table.autofit = True
                 hdr_cells = sub_table.rows[0].cells
                 hdr_cells[0].text = "Time"
@@ -256,7 +278,7 @@ def process_csv_to_tables(file_path, output_dir):
 
                 if has_data:
                     sub_table = cell_right.add_table(rows=1, cols=2)
-                    # Removed table.style = 'Table Grid'
+                    sub_table.style = 'Table Grid'
                     sub_table.autofit = True
                     hdr_cells = sub_table.rows[0].cells
                     hdr_cells[0].text = "Data Item"
@@ -300,7 +322,7 @@ def process_csv_to_tables(file_path, output_dir):
 
             if has_data:
                 table = doc.add_table(rows=1, cols=3)
-                # Removed table.style = 'Table Grid'
+                table.style = 'Table Grid'
                 table.autofit = True
                 hdr_cells = table.rows[0].cells
                 hdr_cells[0].text = "Item"
@@ -339,7 +361,7 @@ def process_csv_to_tables(file_path, output_dir):
 
             if has_data:
                 table = doc.add_table(rows=1, cols=2)
-                # Removed table.style = 'Table Grid'
+                table.style = 'Table Grid'
                 table.autofit = True
                 hdr_cells = table.rows[0].cells
                 hdr_cells[0].text = "Monitor Item"
@@ -384,7 +406,7 @@ def process_csv_to_tables(file_path, output_dir):
 
             if has_data:
                 table = doc.add_table(rows=1, cols=4)
-                # Removed table.style = 'Table Grid'
+                table.style = 'Table Grid'
                 table.autofit = True
                 hdr_cells = table.rows[0].cells
                 hdr_cells[0].text = "Item"
@@ -433,7 +455,7 @@ def process_csv_to_tables(file_path, output_dir):
 
             if has_data:
                 table = doc.add_table(rows=1, cols=7)
-                # Removed table.style = 'Table Grid'
+                table.style = 'Table Grid'
                 table.autofit = True
                 hdr_cells = table.rows[0].cells
                 headers = ["Time", "Unit", "Engine Speed [r/min]", "Battery Voltage [V]", 
@@ -459,7 +481,7 @@ def process_csv_to_tables(file_path, output_dir):
         return output_file
 
     except Exception as e:
-        print(f"An error occurred: {str(e)}")
+        print(f"An error occurred in process_csv_to_tables: {str(e)}")
         raise
 
 # Flask routes
@@ -482,26 +504,32 @@ def process():
 
     if file and file.filename.endswith('.csv'):
         upload_path = os.path.join(app.config['UPLOAD_FOLDER'], 'uploaded.csv')
+        print(f"Saving uploaded file to: {upload_path}")
         file.save(upload_path)
 
         try:
             output_file = process_csv_to_tables(upload_path, app.config['DOWNLOAD_FOLDER'])
             output_filename = os.path.basename(output_file)
 
+            print(f"Cleaning up old files in {app.config['DOWNLOAD_FOLDER']}")
             for f in os.listdir(app.config['DOWNLOAD_FOLDER']):
                 f_path = os.path.join(app.config['DOWNLOAD_FOLDER'], f)
                 if f_path != output_file:
                     try:
                         if os.path.isfile(f_path):
                             os.remove(f_path)
-                    except:
-                        pass
+                            print(f"Removed old file: {f_path}")
+                    except Exception as e:
+                        print(f"Error removing old file {f_path}: {str(e)}")
 
+            print(f"Removing uploaded file: {upload_path}")
             os.remove(upload_path)
 
-            download_url = url_for('download_file', filename=output_filename)
+            download_url = url_for('download_file', filename=url_quote(output_filename))
+            print(f"Generated download URL: {download_url}")
             return jsonify({'success': True, 'download_url': download_url})
         except Exception as e:
+            print(f"Error in /process endpoint: {str(e)}")
             return jsonify({'success': False, 'message': f"Error processing file: {str(e)}"}), 500
     else:
         return jsonify({'success': False, 'message': 'Please upload a valid CSV file.'}), 400
@@ -509,6 +537,7 @@ def process():
 @app.route('/download/<filename>')
 def download_file(filename):
     file_path = os.path.join(app.config['DOWNLOAD_FOLDER'], filename)
+    print(f"Serving file for download: {file_path}")
     return send_file(file_path, as_attachment=True)
 
 @app.route('/logo')
