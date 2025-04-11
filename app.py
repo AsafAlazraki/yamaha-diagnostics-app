@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import os
 from datetime import datetime
 from flask import Flask, render_template, request, send_file, jsonify
-from werkzeug.urls import url_quote
+import urllib.parse  # Use urllib.parse for URL encoding
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = '/tmp/uploads'
@@ -162,7 +162,7 @@ def process_csv_to_tables(file_path, output_dir):
                 print(f"Creating Metadata table with {len(metadata_entries)} entries")
                 num_rows = (len(metadata_entries) + 1) // 2
                 table = doc.add_table(rows=num_rows, cols=2)
-                table.style = 'Table Grid'  # Reintroduce since we know this style exists
+                table.style = 'Table Grid'  # Use the confirmed table style
                 table.autofit = True
                 for idx, (field, value) in enumerate(metadata_entries):
                     row_idx = idx // 2
@@ -525,7 +525,8 @@ def process():
             print(f"Removing uploaded file: {upload_path}")
             os.remove(upload_path)
 
-            download_url = url_for('download_file', filename=url_quote(output_filename))
+            # Use urllib.parse.quote for URL encoding
+            download_url = url_for('download_file', filename=urllib.parse.quote(output_filename))
             print(f"Generated download URL: {download_url}")
             return jsonify({'success': True, 'download_url': download_url})
         except Exception as e:
