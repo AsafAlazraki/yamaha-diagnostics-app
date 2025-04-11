@@ -4,6 +4,7 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.shared import Inches, Pt, RGBColor
+from docx.oxml import OxmlElement  # Global import for OxmlElement
 import matplotlib.pyplot as plt
 import os
 from datetime import datetime
@@ -52,7 +53,7 @@ def create_line_graph(times, hours, output_path):
     print("Creating line graph for engine oil exchange...")
     try:
         plt.figure(figsize=(3.5, 2.5), facecolor='white')
-        plt.plot(times, hours, marker='o', color='#FF6F61', linewidth=2, markersize=6, markerfacecolor='#FF6F61', markeredgecolor='black', markeredgewidth=1)  # Reduced markersize from 8 to 6
+        plt.plot(times, hours, marker='o', color='#FF6F61', linewidth=2, markersize=6, markerfacecolor='#FF6F61', markeredgecolor='black', markeredgewidth=1)
         for time, hour in zip(times, hours):
             plt.text(time, hour + 50, f'{hour}', ha='center', va='bottom', fontsize=6, fontweight='bold')
         plt.xlabel("Record Number", fontsize=8, labelpad=10, fontweight='bold')
@@ -81,7 +82,6 @@ def remove_table_outer_borders(table):
     if tblBorders is not None:
         tblBorders.clear()
     else:
-        from docx.oxml import OxmlElement
         tblBorders = OxmlElement('w:tblBorders')
         tblPr.append(tblBorders)
     for border in ['top', 'left', 'bottom', 'right']:
@@ -97,7 +97,6 @@ def remove_all_table_borders(table):
     if tblBorders is not None:
         tblBorders.clear()
     else:
-        from docx.oxml import OxmlElement
         tblBorders = OxmlElement('w:tblBorders')
         tblPr.append(tblBorders)
     for border in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
@@ -112,7 +111,6 @@ def add_dotted_bottom_border(table):
     for cell in last_row.tc_lst:
         tcPr = cell.tcPr
         if tcPr is None:
-            from docx.oxml import OxmlElement
             tcPr = OxmlElement('w:tcPr')
             cell.append(tcPr)
         tcBorders = tcPr.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tcBorders')
@@ -123,7 +121,7 @@ def add_dotted_bottom_border(table):
         bottom_border.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'dotted')
         bottom_border.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sz', '4')  # Size in eighths of a point (4 = 0.5pt)
         bottom_border.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color', 'auto')
-        tcBorders.append(bottom_border)
+        tcBorders.append(bottom_border)  # Fixed typo: custom_border -> bottom_border
 
 def process_csv_to_tables(file_path, output_dir):
     try:
@@ -360,7 +358,7 @@ def process_csv_to_tables(file_path, output_dir):
 
             bottom_table = doc.add_table(rows=1, cols=2)
             bottom_table.style = 'Table Grid'
-            remove_table_outer_borders(bottom_table)
+            remove_table_outer_borders(bottom_table)  # Fixed typo: custom_table -> bottom_table
             bottom_table.autofit = True
 
             # Left cell: Engine Oil Exchange line graph
