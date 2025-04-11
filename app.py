@@ -2,6 +2,7 @@ import csv
 from collections import defaultdict
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.shared import Inches, Pt, RGBColor
 import matplotlib.pyplot as plt
 import os
@@ -51,8 +52,7 @@ def create_line_graph(times, hours, output_path):
     print("Creating line graph for engine oil exchange...")
     try:
         plt.figure(figsize=(3.5, 2.5), facecolor='white')
-        plt.plot(times, hours, marker='o', color='#FF6F61', linewidth=2, markersize=8, markerfacecolor='#FF6F61', markeredgecolor='black', markeredgewidth=1)
-        # Add labels above each dot
+        plt.plot(times, hours, marker='o', color='#FF6F61', linewidth=2, markersize=6, markerfacecolor='#FF6F61', markeredgecolor='black', markeredgewidth=1)  # Reduced markersize from 8 to 6
         for time, hour in zip(times, hours):
             plt.text(time, hour + 50, f'{hour}', ha='center', va='bottom', fontsize=6, fontweight='bold')
         plt.xlabel("Record Number", fontsize=8, labelpad=10, fontweight='bold')
@@ -61,8 +61,8 @@ def create_line_graph(times, hours, output_path):
         plt.yticks(fontsize=6)
         plt.grid(True, linestyle='--', alpha=0.7, color='gray')
         ax = plt.gca()
-        ax.spines['top'].set_visible(False)  # Remove top border
-        ax.spines['right'].set_visible(False)  # Remove right border
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
         ax.spines['left'].set_color('gray')
         ax.spines['bottom'].set_color('gray')
         plt.tight_layout()
@@ -104,6 +104,26 @@ def remove_all_table_borders(table):
         border_elem = OxmlElement(f'w:{border}')
         border_elem.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'nil')
         tblBorders.append(border_elem)
+
+def add_dotted_bottom_border(table):
+    """Helper function to add a dotted bottom border to the last row of a table."""
+    tbl = table._element
+    last_row = tbl.tr_lst[-1]  # Get the last row
+    for cell in last_row.tc_lst:
+        tcPr = cell.tcPr
+        if tcPr is None:
+            from docx.oxml import OxmlElement
+            tcPr = OxmlElement('w:tcPr')
+            cell.append(tcPr)
+        tcBorders = tcPr.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tcBorders')
+        if tcBorders is None:
+            tcBorders = OxmlElement('w:tcBorders')
+            tcPr.append(tcBorders)
+        bottom_border = OxmlElement('w:bottom')
+        bottom_border.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'dotted')
+        bottom_border.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}sz', '4')  # Size in eighths of a point (4 = 0.5pt)
+        bottom_border.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}color', 'auto')
+        tcBorders.append(bottom_border)
 
 def process_csv_to_tables(file_path, output_dir):
     try:
@@ -182,7 +202,7 @@ def process_csv_to_tables(file_path, output_dir):
         else:
             print(f"Error: logo.png not found at {logo_path}. Skipping logo.")
 
-        # Metadata section (center-aligned, no borders, larger text)
+        # Metadata section (center-aligned, no borders, larger text, dotted line at bottom)
         if "Metadata" in sections:
             print("Processing Metadata section...")
             metadata_entries = []
@@ -220,7 +240,8 @@ def process_csv_to_tables(file_path, output_dir):
                 num_rows = (len(metadata_entries) + 1) // 2
                 table = doc.add_table(rows=num_rows, cols=2)
                 table.style = 'Table Grid'
-                remove_all_table_borders(table)  # Remove all borders (inner and outer)
+                remove_all_table_borders(table)
+                add_dotted_bottom_border(table)  # Add dotted line to the bottom row
                 table.autofit = True
                 for idx, (field, value) in enumerate(metadata_entries):
                     row_idx = idx // 2
@@ -230,15 +251,18 @@ def process_csv_to_tables(file_path, output_dir):
                     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     run_field = paragraph.add_run(f"{field}: ")
                     run_field.bold = True
-                    run_field.font.size = Pt(10)  # Increased text size
+                    run_field.font.size = Pt(10)
                     run_value = paragraph.add_run(value)
                     run_value.bold = False
-                    run_value.font.size = Pt(10)  # Increased text size
+                    run_value.font.size = Pt(10)
                     paragraph.space_after = Pt(2)
 
-        # Top section: Engine Operating Hours bar graph (left) and Engine Monitor table (right)
-        if "1. Engine operating hours according to engine speed" in sections or "4. Engine monitor" in sections:
-            print("Processing Engine Operating Hours and Engine Monitor sections...")
+                # Add a single line space after the Metadata section
+                doc.add_paragraph()
+
+        # Top section: Engine Operating Hours bar graph (left) and Engine Record table (right)
+        if "1. Engine operating hours according to engine speed" in sections or "6. Engine record" in sections:
+            print("Processing Engine Operating Hours and Engine Record sections...")
 
             top_table = doc.add_table(rows=1, cols=2)
             top_table.style = 'Table Grid'
@@ -280,8 +304,104 @@ def process_csv_to_tables(file_path, output_dir):
             else:
                 cell_left.add_paragraph("No significant operating hours to display.")
 
-            # Right cell: Engine Monitor table
+            # Right cell: Engine Record table
             cell_right = top_table.cell(0, 1)
+            heading_paragraph = cell_right.add_paragraph()
+            heading_run = heading_paragraph.add_run("Engine Record")
+            heading_run.bold = True
+            heading_run.font.size = Pt(10)
+            heading_run.font.color.rgb = RGBColor(0, 0, 0)
+            heading_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+            # Add space between header and table
+            cell_right.add_paragraph()
+
+            has_data = False
+            table_data = []
+            if "6. Engine record" in sections:
+                for row in sections["6. Engine record"]:
+                    if len(row) >= 1 and row[0].strip('"') != "Data item" and row[0].strip('"') != "6. Engine record" and row[0].strip('"'):
+                        item = row[0].strip('"')
+                        value = row[2].strip('"') if len(row) > 2 and row[2].strip('"') else row[1].strip('"') if len(row) > 1 and row[1].strip('"') else "(empty)"
+                        if item != "(empty)" and value != "(empty)":
+                            table_data.append((item, value))
+                            has_data = True
+
+            if has_data:
+                sub_table = cell_right.add_table(rows=1, cols=2)
+                sub_table.style = 'Table Grid'
+                remove_table_outer_borders(sub_table)
+                sub_table.autofit = True
+                hdr_cells = sub_table.rows[0].cells
+                hdr_cells[0].text = "Data Item"
+                hdr_cells[0].paragraphs[0].runs[0].bold = True
+                hdr_cells[0].paragraphs[0].runs[0].font.size = Pt(8)
+                hdr_cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                hdr_cells[1].text = "Value"
+                hdr_cells[1].paragraphs[0].runs[0].bold = True
+                hdr_cells[1].paragraphs[0].runs[0].font.size = Pt(8)
+                hdr_cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                for item, value in table_data:
+                    row_cells = sub_table.add_row().cells
+                    row_cells[0].text = item
+                    row_cells[0].paragraphs[0].runs[0].font.size = Pt(8)
+                    row_cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    row_cells[1].text = value
+                    row_cells[1].paragraphs[0].runs[0].font.size = Pt(8)
+                    row_cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+            else:
+                no_data_paragraph = cell_right.add_paragraph("No engine records to display.")
+                no_data_paragraph.runs[0].font.size = Pt(8)
+                no_data_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        # Bottom section: Engine Oil Exchange Line Graph (left) and Engine Monitor table (right)
+        if "2. Record of engine oil exchange" in sections or "4. Engine monitor" in sections:
+            print("Processing Engine Oil Exchange and Engine Monitor sections...")
+
+            bottom_table = doc.add_table(rows=1, cols=2)
+            bottom_table.style = 'Table Grid'
+            remove_table_outer_borders(bottom_table)
+            bottom_table.autofit = True
+
+            # Left cell: Engine Oil Exchange line graph
+            cell_left = bottom_table.cell(0, 0)
+            heading_paragraph = cell_left.add_paragraph()
+            heading_run = heading_paragraph.add_run("Record of Engine Oil Exchange")
+            heading_run.bold = True
+            heading_run.font.size = Pt(10)
+            heading_run.font.color.rgb = RGBColor(0, 0, 0)
+            heading_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+            times = []
+            hours = []
+            if "2. Record of engine oil exchange" in sections:
+                for row in sections["2. Record of engine oil exchange"]:
+                    if len(row) >= 2 and row[0].strip('"') != "Time" and row[0].strip('"'):
+                        time = row[0].strip('"')
+                        data = row[2].strip('"') if len(row) > 2 and row[2].strip('"') else "(empty)"
+                        if data != "(empty)":
+                            try:
+                                times.append(int(time))
+                                hours.append(float(data))
+                            except ValueError as e:
+                                print(f"Warning: Could not convert time '{time}' or hours '{data}' to number: {str(e)}")
+                                continue
+
+            if times and hours:
+                line_graph_path = os.path.join(output_dir, "engine_oil_exchange_graph.png")
+                create_line_graph(times, hours, line_graph_path)
+                graph_paragraph = cell_left.add_paragraph()
+                graph_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run = graph_paragraph.add_run()
+                run.add_picture(line_graph_path, width=Inches(3.5), height=Inches(2.5))
+                os.remove(line_graph_path)
+            else:
+                no_data_paragraph = cell_left.add_paragraph("No engine oil exchange records to display.")
+                no_data_paragraph.runs[0].font.size = Pt(8)
+                no_data_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+            # Right cell: Engine Monitor table
+            cell_right = bottom_table.cell(0, 1)
             heading_paragraph = cell_right.add_paragraph()
             heading_run = heading_paragraph.add_run("Engine Monitor")
             heading_run.bold = True
@@ -299,9 +419,9 @@ def process_csv_to_tables(file_path, output_dir):
                 for row in sections["4. Engine monitor"]:
                     if len(row) >= 5 and row[0].strip('"') and not row[0].startswith("Monitor item") and not row[0].startswith("4. Engine monitor"):
                         item = row[0].strip('"')
-                        if item == "Engine shut off switch":
+                        if item.lower() == "engine shut off switch":
                             stop_adding = True
-                            continue
+                            break  # Stop processing further rows
                         if stop_adding:
                             continue
                         value = row[4].strip('"') if len(row) > 4 else row[2].strip('"')
@@ -333,102 +453,6 @@ def process_csv_to_tables(file_path, output_dir):
                     row_cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
             else:
                 no_data_paragraph = cell_right.add_paragraph("No engine monitor data to display.")
-                no_data_paragraph.runs[0].font.size = Pt(8)
-                no_data_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-        # Bottom section: Engine Record (left) and Engine Oil Exchange Line Graph (right)
-        if "2. Record of engine oil exchange" in sections or "6. Engine record" in sections:
-            print("Processing Engine Record and Engine Oil Exchange sections...")
-
-            content_table = doc.add_table(rows=1, cols=2)
-            content_table.style = 'Table Grid'
-            remove_table_outer_borders(content_table)
-            content_table.autofit = True
-
-            # Left cell: Engine Record table
-            cell_left = content_table.cell(0, 0)
-            heading_paragraph = cell_left.add_paragraph()
-            heading_run = heading_paragraph.add_run("Engine Record")
-            heading_run.bold = True
-            heading_run.font.size = Pt(10)
-            heading_run.font.color.rgb = RGBColor(0, 0, 0)
-            heading_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-            # Add space between header and table
-            cell_left.add_paragraph()
-
-            has_data = False
-            table_data = []
-            if "6. Engine record" in sections:
-                for row in sections["6. Engine record"]:
-                    if len(row) >= 1 and row[0].strip('"') != "Data item" and row[0].strip('"') != "6. Engine record" and row[0].strip('"'):
-                        item = row[0].strip('"')
-                        value = row[2].strip('"') if len(row) > 2 and row[2].strip('"') else row[1].strip('"') if len(row) > 1 and row[1].strip('"') else "(empty)"
-                        if item != "(empty)" and value != "(empty)":
-                            table_data.append((item, value))
-                            has_data = True
-
-            if has_data:
-                sub_table = cell_left.add_table(rows=1, cols=2)
-                sub_table.style = 'Table Grid'
-                remove_table_outer_borders(sub_table)
-                sub_table.autofit = True
-                hdr_cells = sub_table.rows[0].cells
-                hdr_cells[0].text = "Data Item"
-                hdr_cells[0].paragraphs[0].runs[0].bold = True
-                hdr_cells[0].paragraphs[0].runs[0].font.size = Pt(8)
-                hdr_cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                hdr_cells[1].text = "Value"
-                hdr_cells[1].paragraphs[0].runs[0].bold = True
-                hdr_cells[1].paragraphs[0].runs[0].font.size = Pt(8)
-                hdr_cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                for item, value in table_data:
-                    row_cells = sub_table.add_row().cells
-                    row_cells[0].text = item
-                    row_cells[0].paragraphs[0].runs[0].font.size = Pt(8)
-                    row_cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    row_cells[1].text = value
-                    row_cells[1].paragraphs[0].runs[0].font.size = Pt(8)
-                    row_cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-            else:
-                no_data_paragraph = cell_left.add_paragraph("No engine records to display.")
-                no_data_paragraph.runs[0].font.size = Pt(8)
-                no_data_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-            # Right cell: Engine Oil Exchange line graph
-            cell_right = content_table.cell(0, 1)
-            heading_paragraph = cell_right.add_paragraph()
-            heading_run = heading_paragraph.add_run("Record of Engine Oil Exchange")
-            heading_run.bold = True
-            heading_run.font.size = Pt(10)
-            heading_run.font.color.rgb = RGBColor(0, 0, 0)
-            heading_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-            times = []
-            hours = []
-            if "2. Record of engine oil exchange" in sections:
-                for row in sections["2. Record of engine oil exchange"]:
-                    if len(row) >= 2 and row[0].strip('"') != "Time" and row[0].strip('"'):
-                        time = row[0].strip('"')
-                        data = row[2].strip('"') if len(row) > 2 and row[2].strip('"') else "(empty)"
-                        if data != "(empty)":
-                            try:
-                                times.append(int(time))
-                                hours.append(float(data))
-                            except ValueError as e:
-                                print(f"Warning: Could not convert time '{time}' or hours '{data}' to number: {str(e)}")
-                                continue
-
-            if times and hours:
-                line_graph_path = os.path.join(output_dir, "engine_oil_exchange_graph.png")
-                create_line_graph(times, hours, line_graph_path)
-                graph_paragraph = cell_right.add_paragraph()
-                graph_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                run = graph_paragraph.add_run()
-                run.add_picture(line_graph_path, width=Inches(3.5), height=Inches(2.5))
-                os.remove(line_graph_path)
-            else:
-                no_data_paragraph = cell_right.add_paragraph("No engine oil exchange records to display.")
                 no_data_paragraph.runs[0].font.size = Pt(8)
                 no_data_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
