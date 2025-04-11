@@ -19,7 +19,7 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['DOWNLOAD_FOLDER'], exist_ok=True)
 
 def is_section_start(row):
-    return len(row) > 0 and row[0].startswith(tuple(str(i) + '.' for i in range(1, 8)))
+    return len(row) > 0 and row[0].strip('"').startswith(tuple(str(i) + '.' for i in range(1, 8)))
 
 def create_bar_graph(speed_ranges, hours, output_path):
     print("Creating bar graph...")
@@ -50,16 +50,19 @@ def create_bar_graph(speed_ranges, hours, output_path):
 def create_line_graph(times, hours, output_path):
     print("Creating line graph for engine oil exchange...")
     try:
-        plt.figure(figsize=(3.5, 2.5), facecolor='white')  # Smaller size to fit on the right
+        plt.figure(figsize=(3.5, 2.5), facecolor='white')
         plt.plot(times, hours, marker='o', color='#FF6F61', linewidth=2, markersize=8, markerfacecolor='#FF6F61', markeredgecolor='black', markeredgewidth=1)
+        # Add labels above each dot
+        for time, hour in zip(times, hours):
+            plt.text(time, hour + 50, f'{hour}', ha='center', va='bottom', fontsize=6, fontweight='bold')
         plt.xlabel("Record Number", fontsize=8, labelpad=10, fontweight='bold')
         plt.ylabel("Engine Hours", fontsize=8, labelpad=10, fontweight='bold')
         plt.xticks(times, fontsize=6)
         plt.yticks(fontsize=6)
         plt.grid(True, linestyle='--', alpha=0.7, color='gray')
         ax = plt.gca()
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)  # Remove top border
+        ax.spines['right'].set_visible(False)  # Remove right border
         ax.spines['left'].set_color('gray')
         ax.spines['bottom'].set_color('gray')
         plt.tight_layout()
@@ -82,6 +85,22 @@ def remove_table_outer_borders(table):
         tblBorders = OxmlElement('w:tblBorders')
         tblPr.append(tblBorders)
     for border in ['top', 'left', 'bottom', 'right']:
+        border_elem = OxmlElement(f'w:{border}')
+        border_elem.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'nil')
+        tblBorders.append(border_elem)
+
+def remove_all_table_borders(table):
+    """Helper function to remove all borders (inner and outer) from a table."""
+    tbl = table._element
+    tblPr = tbl.tblPr
+    tblBorders = tblPr.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblBorders')
+    if tblBorders is not None:
+        tblBorders.clear()
+    else:
+        from docx.oxml import OxmlElement
+        tblBorders = OxmlElement('w:tblBorders')
+        tblPr.append(tblBorders)
+    for border in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
         border_elem = OxmlElement(f'w:{border}')
         border_elem.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'nil')
         tblBorders.append(border_elem)
@@ -110,7 +129,6 @@ def process_csv_to_tables(file_path, output_dir):
             print(f"Unexpected error while reading CSV: {str(e)}")
             raise Exception(f"Failed to read CSV file: {str(e)}")
 
-        # Validate CSV structure
         for i, row in enumerate(csv_rows):
             print(f"Row {i + 1}: {row}")
             if not any(row):
@@ -164,7 +182,7 @@ def process_csv_to_tables(file_path, output_dir):
         else:
             print(f"Error: logo.png not found at {logo_path}. Skipping logo.")
 
-        # Metadata section (center-aligned, no borders)
+        # Metadata section (center-aligned, no borders, larger text)
         if "Metadata" in sections:
             print("Processing Metadata section...")
             metadata_entries = []
@@ -202,33 +220,33 @@ def process_csv_to_tables(file_path, output_dir):
                 num_rows = (len(metadata_entries) + 1) // 2
                 table = doc.add_table(rows=num_rows, cols=2)
                 table.style = 'Table Grid'
-                remove_table_outer_borders(table)  # Remove outer borders
+                remove_all_table_borders(table)  # Remove all borders (inner and outer)
                 table.autofit = True
                 for idx, (field, value) in enumerate(metadata_entries):
                     row_idx = idx // 2
                     col_idx = idx % 2
                     cell = table.cell(row_idx, col_idx)
                     paragraph = cell.paragraphs[0]
-                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center-align
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     run_field = paragraph.add_run(f"{field}: ")
                     run_field.bold = True
-                    run_field.font.size = Pt(8)
+                    run_field.font.size = Pt(10)  # Increased text size
                     run_value = paragraph.add_run(value)
                     run_value.bold = False
-                    run_value.font.size = Pt(8)
+                    run_value.font.size = Pt(10)  # Increased text size
                     paragraph.space_after = Pt(2)
 
-        # Engine Operating Hours, Engine Record, and Engine Oil Exchange Line Graph
-        if "1. Engine operating hours according to engine speed" in sections or "2. Record of engine oil exchange" in sections or "6. Engine record" in sections:
-            print("Processing Engine Operating Hours and related sections...")
+        # Top section: Engine Operating Hours bar graph (left) and Engine Monitor table (right)
+        if "1. Engine operating hours according to engine speed" in sections or "4. Engine monitor" in sections:
+            print("Processing Engine Operating Hours and Engine Monitor sections...")
 
-            # First table: Engine Operating Hours bar graph (left side)
-            bar_graph_table = doc.add_table(rows=1, cols=1)
-            bar_graph_table.style = 'Table Grid'
-            remove_table_outer_borders(bar_graph_table)
-            bar_graph_table.autofit = True
+            top_table = doc.add_table(rows=1, cols=2)
+            top_table.style = 'Table Grid'
+            remove_table_outer_borders(top_table)
+            top_table.autofit = True
 
-            cell_left = bar_graph_table.cell(0, 0)
+            # Left cell: Engine Operating Hours bar graph
+            cell_left = top_table.cell(0, 0)
             heading_paragraph = cell_left.add_paragraph()
             heading_run = heading_paragraph.add_run("Engine Operating Hours According to Engine Speed")
             heading_run.bold = True
@@ -262,7 +280,66 @@ def process_csv_to_tables(file_path, output_dir):
             else:
                 cell_left.add_paragraph("No significant operating hours to display.")
 
-            # Second table: Engine Record (left) and Engine Oil Exchange Line Graph (right)
+            # Right cell: Engine Monitor table
+            cell_right = top_table.cell(0, 1)
+            heading_paragraph = cell_right.add_paragraph()
+            heading_run = heading_paragraph.add_run("Engine Monitor")
+            heading_run.bold = True
+            heading_run.font.size = Pt(10)
+            heading_run.font.color.rgb = RGBColor(0, 0, 0)
+            heading_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+            # Add space between header and table
+            cell_right.add_paragraph()
+
+            has_data = False
+            table_data = []
+            stop_adding = False
+            if "4. Engine monitor" in sections:
+                for row in sections["4. Engine monitor"]:
+                    if len(row) >= 5 and row[0].strip('"') and not row[0].startswith("Monitor item") and not row[0].startswith("4. Engine monitor"):
+                        item = row[0].strip('"')
+                        if item == "Engine shut off switch":
+                            stop_adding = True
+                            continue
+                        if stop_adding:
+                            continue
+                        value = row[4].strip('"') if len(row) > 4 else row[2].strip('"')
+                        if value != "(empty)":
+                            table_data.append((item, value))
+                            has_data = True
+
+            if has_data:
+                sub_table = cell_right.add_table(rows=1, cols=2)
+                sub_table.style = 'Table Grid'
+                remove_table_outer_borders(sub_table)
+                sub_table.autofit = True
+                hdr_cells = sub_table.rows[0].cells
+                hdr_cells[0].text = "Monitor Item"
+                hdr_cells[0].paragraphs[0].runs[0].bold = True
+                hdr_cells[0].paragraphs[0].runs[0].font.size = Pt(8)
+                hdr_cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                hdr_cells[1].text = "Value"
+                hdr_cells[1].paragraphs[0].runs[0].bold = True
+                hdr_cells[1].paragraphs[0].runs[0].font.size = Pt(8)
+                hdr_cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                for item, value in table_data:
+                    row_cells = sub_table.add_row().cells
+                    row_cells[0].text = item
+                    row_cells[0].paragraphs[0].runs[0].font.size = Pt(8)
+                    row_cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    row_cells[1].text = value
+                    row_cells[1].paragraphs[0].runs[0].font.size = Pt(8)
+                    row_cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
+            else:
+                no_data_paragraph = cell_right.add_paragraph("No engine monitor data to display.")
+                no_data_paragraph.runs[0].font.size = Pt(8)
+                no_data_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        # Bottom section: Engine Record (left) and Engine Oil Exchange Line Graph (right)
+        if "2. Record of engine oil exchange" in sections or "6. Engine record" in sections:
+            print("Processing Engine Record and Engine Oil Exchange sections...")
+
             content_table = doc.add_table(rows=1, cols=2)
             content_table.style = 'Table Grid'
             remove_table_outer_borders(content_table)
@@ -276,6 +353,9 @@ def process_csv_to_tables(file_path, output_dir):
             heading_run.font.size = Pt(10)
             heading_run.font.color.rgb = RGBColor(0, 0, 0)
             heading_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+            # Add space between header and table
+            cell_left.add_paragraph()
 
             has_data = False
             table_data = []
@@ -297,15 +377,19 @@ def process_csv_to_tables(file_path, output_dir):
                 hdr_cells[0].text = "Data Item"
                 hdr_cells[0].paragraphs[0].runs[0].bold = True
                 hdr_cells[0].paragraphs[0].runs[0].font.size = Pt(8)
+                hdr_cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
                 hdr_cells[1].text = "Value"
                 hdr_cells[1].paragraphs[0].runs[0].bold = True
                 hdr_cells[1].paragraphs[0].runs[0].font.size = Pt(8)
+                hdr_cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
                 for item, value in table_data:
                     row_cells = sub_table.add_row().cells
                     row_cells[0].text = item
                     row_cells[0].paragraphs[0].runs[0].font.size = Pt(8)
+                    row_cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
                     row_cells[1].text = value
                     row_cells[1].paragraphs[0].runs[0].font.size = Pt(8)
+                    row_cells[1].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
             else:
                 no_data_paragraph = cell_left.add_paragraph("No engine records to display.")
                 no_data_paragraph.runs[0].font.size = Pt(8)
@@ -390,148 +474,6 @@ def process_csv_to_tables(file_path, output_dir):
                     row_cells[2].text = code
             else:
                 doc.add_paragraph("No diagnosis records to display.")
-            doc.add_paragraph()
-
-        # Engine Monitor section
-        if "4. Engine monitor" in sections:
-            print("Processing Engine Monitor section...")
-            heading_paragraph = doc.add_paragraph()
-            heading_run = heading_paragraph.add_run("Engine Monitor")
-            heading_run.bold = True
-            heading_run.font.size = Pt(10)
-            heading_run.font.color.rgb = RGBColor(0, 0, 0)
-            heading_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
-            has_data = False
-            table_data = []
-            for row in sections["4. Engine monitor"]:
-                if len(row) >= 5 and row[0].strip('"') and not row[0].startswith("Monitor item") and not row[0].startswith("4. Engine monitor"):
-                    item = row[0].strip('"')
-                    value = row[4].strip('"') if len(row) > 4 else row[2].strip('"')
-                    if value != "(empty)":
-                        table_data.append((item, value))
-                        has_data = True
-
-            if has_data:
-                table = doc.add_table(rows=1, cols=2)
-                table.style = 'Table Grid'
-                remove_table_outer_borders(table)
-                table.autofit = True
-                hdr_cells = table.rows[0].cells
-                hdr_cells[0].text = "Monitor Item"
-                hdr_cells[0].paragraphs[0].runs[0].bold = True
-                hdr_cells[1].text = "Value"
-                hdr_cells[1].paragraphs[0].runs[0].bold = True
-                for item, value in table_data:
-                    row_cells = table.add_row().cells
-                    row_cells[0].text = item
-                    row_cells[1].text = value
-            else:
-                doc.add_paragraph("No engine monitor data to display.")
-            doc.add_paragraph()
-
-        # Diagnosis Record section
-        if "5. Diagnosis record" in sections:
-            print("Processing Diagnosis Record section...")
-            heading_paragraph = doc.add_paragraph()
-            heading_run = heading_paragraph.add_run("Diagnosis Record")
-            heading_run.bold = True
-            heading_run.font.size = Pt(10)
-            heading_run.font.color.rgb = RGBColor(0, 0, 0)
-            heading_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
-            has_data = False
-            table_data = []
-            skip_header = True
-            for row in sections["5. Diagnosis record"]:
-                if skip_header:
-                    if row[0].strip('"') == "5. Diagnosis record":
-                        continue
-                    if row[0].strip('"') == "Item" and len(row) >= 4 and row[1].strip('"') == "Position":
-                        skip_header = False
-                        continue
-                if len(row) >= 4:
-                    item = row[0].strip('"') if row[0].strip('"') else "(empty)"
-                    position = row[1].strip('"') if len(row) > 1 else "(empty)"
-                    occurred = row[2].strip('"') if len(row) > 2 else "(empty)"
-                    code = row[3].strip('"') if len(row) > 3 else "(empty)"
-                    if not (item == "(empty)" and position == "(empty)" and occurred == "(empty)" and code == "(empty)"):
-                        table_data.append((item, position, occurred, code))
-                        has_data = True
-
-            if has_data:
-                table = doc.add_table(rows=1, cols=4)
-                table.style = 'Table Grid'
-                remove_table_outer_borders(table)
-                table.autofit = True
-                hdr_cells = table.rows[0].cells
-                hdr_cells[0].text = "Item"
-                hdr_cells[0].paragraphs[0].runs[0].bold = True
-                hdr_cells[1].text = "Position"
-                hdr_cells[1].paragraphs[0].runs[0].bold = True
-                hdr_cells[2].text = "Occurred"
-                hdr_cells[2].paragraphs[0].runs[0].bold = True
-                hdr_cells[3].text = "Code"
-                hdr_cells[3].paragraphs[0].runs[0].bold = True
-                for item, position, occurred, code in table_data:
-                    row_cells = table.add_row().cells
-                    row_cells[0].text = item
-                    row_cells[1].text = position
-                    row_cells[2].text = occurred
-                    row_cells[3].text = code
-            else:
-                doc.add_paragraph("No diagnosis records to display.")
-            doc.add_paragraph()
-
-        # Data Comparison Graph section
-        if "7. Data comparison graph" in sections:
-            print("Processing Data Comparison Graph section...")
-            heading_paragraph = doc.add_paragraph()
-            heading_run = heading_paragraph.add_run("Data Comparison Graph")
-            heading_run.bold = True
-            heading_run.font.size = Pt(10)
-            heading_run.font.color.rgb = RGBColor(0, 0, 0)
-            heading_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
-
-            has_data = False
-            table_data = []
-            for row in sections["7. Data comparison graph"]:
-                if len(row) >= 7 and row[0].startswith("-"):
-                    time = row[0].strip('"')
-                    unit = row[2].strip('"')
-                    engine_speed = row[4].strip('"')
-                    battery_voltage = row[5].strip('"')
-                    tps_voltage = row[6].strip('"')
-                    cooling_temp = row[7].strip('"')
-                    intake_pressure = row[8].strip('"')
-                    if not (engine_speed == "(empty)" and battery_voltage == "(empty)" and 
-                            tps_voltage == "(empty)" and cooling_temp == "(empty)" and 
-                            intake_pressure == "(empty)"):
-                        table_data.append((time, unit, engine_speed, battery_voltage, tps_voltage, cooling_temp, intake_pressure))
-                        has_data = True
-
-            if has_data:
-                table = doc.add_table(rows=1, cols=7)
-                table.style = 'Table Grid'
-                remove_table_outer_borders(table)
-                table.autofit = True
-                hdr_cells = table.rows[0].cells
-                headers = ["Time", "Unit", "Engine Speed [r/min]", "Battery Voltage [V]", 
-                           "TPS Voltage [V]", "Cooling Water Temp [°C]", "Intake Air Pressure [kPa]"]
-                for i, header in enumerate(headers):
-                    hdr_cells[i].text = header
-                    hdr_cells[i].paragraphs[0].runs[0].bold = True
-                for time, unit, engine_speed, battery_voltage, tps_voltage, cooling_temp, intake_pressure in table_data:
-                    row_cells = table.add_row().cells
-                    row_cells[0].text = time
-                    row_cells[1].text = unit
-                    row_cells[2].text = engine_speed
-                    row_cells[3].text = battery_voltage
-                    row_cells[4].text = tps_voltage
-                    row_cells[5].text = cooling_temp
-                    row_cells[6].text = intake_pressure
-            else:
-                doc.add_paragraph("No data comparison graph data to display.")
             doc.add_paragraph()
 
         print(f"Saving Word document to {output_file}")
