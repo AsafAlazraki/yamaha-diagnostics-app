@@ -88,6 +88,12 @@ def process_csv_to_tables(file_path, output_dir):
         section.left_margin = Inches(0.5)
         section.right_margin = Inches(0.5)
 
+        # Debug: Print available table styles
+        print("Available table styles:")
+        for style in doc.styles:
+            if style.type == 2:  # 2 is for table styles
+                print(style.name)
+
         logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
         if os.path.exists(logo_path):
             header = doc.sections[0].header
@@ -100,6 +106,7 @@ def process_csv_to_tables(file_path, output_dir):
             print(f"Error: logo.png not found at {logo_path}. Skipping logo.")
 
         if "Metadata" in sections:
+            print("Processing Metadata section...")
             metadata_entries = []
             metadata_keys = [
                 "YAMAHA DIAGNOSTIC SYSTEM", "Save date & time", "Customer name", 
@@ -131,9 +138,11 @@ def process_csv_to_tables(file_path, output_dir):
                 metadata_entries.append(("Total Engine Hours", total_engine_hours))
 
             if metadata_entries:
+                print(f"Creating Metadata table with {len(metadata_entries)} entries")
                 num_rows = (len(metadata_entries) + 1) // 2
                 table = doc.add_table(rows=num_rows, cols=2)
-                table.style = 'Table Grid'  # Use Word's default table style
+                # Removed table.style = 'Table Grid' to test if this is the issue
+                table.autofit = True
                 for idx, (field, value) in enumerate(metadata_entries):
                     row_idx = idx // 2
                     col_idx = idx % 2
@@ -148,8 +157,9 @@ def process_csv_to_tables(file_path, output_dir):
                     paragraph.space_after = Pt(2)
 
         if "1. Engine operating hours according to engine speed" in sections or "2. Record of engine oil exchange" in sections or "6. Engine record" in sections:
+            print("Processing Engine Operating Hours and related sections...")
             content_table = doc.add_table(rows=1, cols=2)
-            content_table.style = 'Table Grid'  # Use Word's default table style
+            # Removed table.style = 'Table Grid'
             content_table.autofit = True
 
             cell_left = content_table.cell(0, 0)
@@ -206,7 +216,7 @@ def process_csv_to_tables(file_path, output_dir):
 
             if has_data:
                 sub_table = cell_right.add_table(rows=1, cols=2)
-                sub_table.style = 'Table Grid'  # Use Word's default table style
+                # Removed table.style = 'Table Grid'
                 sub_table.autofit = True
                 hdr_cells = sub_table.rows[0].cells
                 hdr_cells[0].text = "Time"
@@ -246,7 +256,7 @@ def process_csv_to_tables(file_path, output_dir):
 
                 if has_data:
                     sub_table = cell_right.add_table(rows=1, cols=2)
-                    sub_table.style = 'Table Grid'  # Use Word's default table style
+                    # Removed table.style = 'Table Grid'
                     sub_table.autofit = True
                     hdr_cells = sub_table.rows[0].cells
                     hdr_cells[0].text = "Data Item"
@@ -269,6 +279,7 @@ def process_csv_to_tables(file_path, output_dir):
             doc.add_paragraph()
 
         if "3. Diagnosis" in sections:
+            print("Processing Diagnosis section...")
             heading_paragraph = doc.add_paragraph()
             heading_run = heading_paragraph.add_run("Diagnosis")
             heading_run.bold = True
@@ -289,7 +300,7 @@ def process_csv_to_tables(file_path, output_dir):
 
             if has_data:
                 table = doc.add_table(rows=1, cols=3)
-                table.style = 'Table Grid'  # Use Word's default table style
+                # Removed table.style = 'Table Grid'
                 table.autofit = True
                 hdr_cells = table.rows[0].cells
                 hdr_cells[0].text = "Item"
@@ -308,6 +319,7 @@ def process_csv_to_tables(file_path, output_dir):
             doc.add_paragraph()
 
         if "4. Engine monitor" in sections:
+            print("Processing Engine Monitor section...")
             heading_paragraph = doc.add_paragraph()
             heading_run = heading_paragraph.add_run("Engine Monitor")
             heading_run.bold = True
@@ -327,7 +339,7 @@ def process_csv_to_tables(file_path, output_dir):
 
             if has_data:
                 table = doc.add_table(rows=1, cols=2)
-                table.style = 'Table Grid'  # Use Word's default table style
+                # Removed table.style = 'Table Grid'
                 table.autofit = True
                 hdr_cells = table.rows[0].cells
                 hdr_cells[0].text = "Monitor Item"
@@ -343,6 +355,7 @@ def process_csv_to_tables(file_path, output_dir):
             doc.add_paragraph()
 
         if "5. Diagnosis record" in sections:
+            print("Processing Diagnosis Record section...")
             heading_paragraph = doc.add_paragraph()
             heading_run = heading_paragraph.add_run("Diagnosis Record")
             heading_run.bold = True
@@ -371,7 +384,7 @@ def process_csv_to_tables(file_path, output_dir):
 
             if has_data:
                 table = doc.add_table(rows=1, cols=4)
-                table.style = 'Table Grid'  # Use Word's default table style
+                # Removed table.style = 'Table Grid'
                 table.autofit = True
                 hdr_cells = table.rows[0].cells
                 hdr_cells[0].text = "Item"
@@ -393,6 +406,7 @@ def process_csv_to_tables(file_path, output_dir):
             doc.add_paragraph()
 
         if "7. Data comparison graph" in sections:
+            print("Processing Data Comparison Graph section...")
             heading_paragraph = doc.add_paragraph()
             heading_run = heading_paragraph.add_run("Data Comparison Graph")
             heading_run.bold = True
@@ -419,7 +433,7 @@ def process_csv_to_tables(file_path, output_dir):
 
             if has_data:
                 table = doc.add_table(rows=1, cols=7)
-                table.style = 'Table Grid'  # Use Word's default table style
+                # Removed table.style = 'Table Grid'
                 table.autofit = True
                 hdr_cells = table.rows[0].cells
                 headers = ["Time", "Unit", "Engine Speed [r/min]", "Battery Voltage [V]", 
