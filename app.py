@@ -6,8 +6,8 @@ from docx.shared import Inches, Pt, RGBColor
 import matplotlib.pyplot as plt
 import os
 from datetime import datetime
-from flask import Flask, render_template, request, send_file, jsonify
-import urllib.parse  # Use urllib.parse for URL encoding
+from flask import Flask, render_template, request, send_file, jsonify, url_for  # Added url_for import
+import urllib.parse  # For URL encoding
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = '/tmp/uploads'
