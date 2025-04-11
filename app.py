@@ -6,8 +6,8 @@ from docx.shared import Inches, Pt, RGBColor
 import matplotlib.pyplot as plt
 import os
 from datetime import datetime
-from flask import Flask, render_template, request, send_file, jsonify, url_for  # Added url_for import
-import urllib.parse  # For URL encoding
+from flask import Flask, render_template, request, send_file, jsonify, url_for
+import urllib.parse
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = '/tmp/uploads'
@@ -47,6 +47,45 @@ def create_bar_graph(speed_ranges, hours, output_path):
         print(f"Error creating bar graph: {str(e)}")
         raise
 
+def create_line_graph(times, hours, output_path):
+    print("Creating line graph for engine oil exchange...")
+    try:
+        plt.figure(figsize=(3.5, 2.5), facecolor='white')  # Smaller size to fit on the right
+        plt.plot(times, hours, marker='o', color='#FF6F61', linewidth=2, markersize=8, markerfacecolor='#FF6F61', markeredgecolor='black', markeredgewidth=1)
+        plt.xlabel("Record Number", fontsize=8, labelpad=10, fontweight='bold')
+        plt.ylabel("Engine Hours", fontsize=8, labelpad=10, fontweight='bold')
+        plt.xticks(times, fontsize=6)
+        plt.yticks(fontsize=6)
+        plt.grid(True, linestyle='--', alpha=0.7, color='gray')
+        ax = plt.gca()
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_color('gray')
+        ax.spines['bottom'].set_color('gray')
+        plt.tight_layout()
+        plt.savefig(output_path, bbox_inches='tight', dpi=100)
+        plt.close()
+        print(f"Line graph saved to {output_path}")
+    except Exception as e:
+        print(f"Error creating line graph: {str(e)}")
+        raise
+
+def remove_table_outer_borders(table):
+    """Helper function to remove outer borders of a table while keeping inner borders."""
+    tbl = table._element
+    tblPr = tbl.tblPr
+    tblBorders = tblPr.find('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}tblBorders')
+    if tblBorders is not None:
+        tblBorders.clear()
+    else:
+        from docx.oxml import OxmlElement
+        tblBorders = OxmlElement('w:tblBorders')
+        tblPr.append(tblBorders)
+    for border in ['top', 'left', 'bottom', 'right']:
+        border_elem = OxmlElement(f'w:{border}')
+        border_elem.set('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val', 'nil')
+        tblBorders.append(border_elem)
+
 def process_csv_to_tables(file_path, output_dir):
     try:
         print(f"Reading CSV file: {file_path}")
@@ -57,7 +96,7 @@ def process_csv_to_tables(file_path, output_dir):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 reader = csv.reader(f)
-                csv_rows = list(reader)  # Read all rows into memory for validation
+                csv_rows = list(reader)
                 print(f"Total CSV rows read: {len(csv_rows)}")
                 if not csv_rows:
                     raise ValueError("CSV file is empty")
@@ -74,7 +113,7 @@ def process_csv_to_tables(file_path, output_dir):
         # Validate CSV structure
         for i, row in enumerate(csv_rows):
             print(f"Row {i + 1}: {row}")
-            if not any(row):  # Skip empty rows
+            if not any(row):
                 continue
             if is_section_start(row):
                 current_section = row[0].strip()
@@ -87,12 +126,12 @@ def process_csv_to_tables(file_path, output_dir):
         print("CSV file read successfully. Creating Word document...")
 
         today = datetime.now().strftime("%d-%m-%y")
-        safe_customer_name = customer_name.replace(" ", "_").replace("/", "_").replace("\\", "_")  # Sanitize filename
+        safe_customer_name = customer_name.replace(" ", "_").replace("/", "_").replace("\\", "_")
         output_filename = f"{safe_customer_name}_Yamaha_Diagnostics_Report_{today}.docx"
         output_file = os.path.join(output_dir, output_filename)
         print(f"Output file will be saved as: {output_file}")
 
-        # Extract Total Engine Hours from "1. Engine operating hours according to engine speed"
+        # Extract Total Engine Hours
         total_engine_hours = "(empty)"
         if "1. Engine operating hours according to engine speed" in sections:
             print("Section 1 data:", sections["1. Engine operating hours according to engine speed"])
@@ -109,10 +148,9 @@ def process_csv_to_tables(file_path, output_dir):
         section.left_margin = Inches(0.5)
         section.right_margin = Inches(0.5)
 
-        # Debug: Print available table styles
         print("Available table styles:")
         for style in doc.styles:
-            if style.type == 2:  # 2 is for table styles
+            if style.type == 2:
                 print(style.name)
 
         logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
@@ -126,6 +164,7 @@ def process_csv_to_tables(file_path, output_dir):
         else:
             print(f"Error: logo.png not found at {logo_path}. Skipping logo.")
 
+        # Metadata section (center-aligned, no borders)
         if "Metadata" in sections:
             print("Processing Metadata section...")
             metadata_entries = []
@@ -162,13 +201,15 @@ def process_csv_to_tables(file_path, output_dir):
                 print(f"Creating Metadata table with {len(metadata_entries)} entries")
                 num_rows = (len(metadata_entries) + 1) // 2
                 table = doc.add_table(rows=num_rows, cols=2)
-                table.style = 'Table Grid'  # Use the confirmed table style
+                table.style = 'Table Grid'
+                remove_table_outer_borders(table)  # Remove outer borders
                 table.autofit = True
                 for idx, (field, value) in enumerate(metadata_entries):
                     row_idx = idx // 2
                     col_idx = idx % 2
                     cell = table.cell(row_idx, col_idx)
                     paragraph = cell.paragraphs[0]
+                    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center-align
                     run_field = paragraph.add_run(f"{field}: ")
                     run_field.bold = True
                     run_field.font.size = Pt(8)
@@ -177,13 +218,17 @@ def process_csv_to_tables(file_path, output_dir):
                     run_value.font.size = Pt(8)
                     paragraph.space_after = Pt(2)
 
+        # Engine Operating Hours, Engine Record, and Engine Oil Exchange Line Graph
         if "1. Engine operating hours according to engine speed" in sections or "2. Record of engine oil exchange" in sections or "6. Engine record" in sections:
             print("Processing Engine Operating Hours and related sections...")
-            content_table = doc.add_table(rows=1, cols=2)
-            content_table.style = 'Table Grid'
-            content_table.autofit = True
 
-            cell_left = content_table.cell(0, 0)
+            # First table: Engine Operating Hours bar graph (left side)
+            bar_graph_table = doc.add_table(rows=1, cols=1)
+            bar_graph_table.style = 'Table Grid'
+            remove_table_outer_borders(bar_graph_table)
+            bar_graph_table.autofit = True
+
+            cell_left = bar_graph_table.cell(0, 0)
             heading_paragraph = cell_left.add_paragraph()
             heading_run = heading_paragraph.add_run("Engine Operating Hours According to Engine Speed")
             heading_run.bold = True
@@ -217,9 +262,16 @@ def process_csv_to_tables(file_path, output_dir):
             else:
                 cell_left.add_paragraph("No significant operating hours to display.")
 
-            cell_right = content_table.cell(0, 1)
-            heading_paragraph = cell_right.add_paragraph()
-            heading_run = heading_paragraph.add_run("Record of Engine Oil Exchange")
+            # Second table: Engine Record (left) and Engine Oil Exchange Line Graph (right)
+            content_table = doc.add_table(rows=1, cols=2)
+            content_table.style = 'Table Grid'
+            remove_table_outer_borders(content_table)
+            content_table.autofit = True
+
+            # Left cell: Engine Record table
+            cell_left = content_table.cell(0, 0)
+            heading_paragraph = cell_left.add_paragraph()
+            heading_run = heading_paragraph.add_run("Engine Record")
             heading_run.bold = True
             heading_run.font.size = Pt(10)
             heading_run.font.color.rgb = RGBColor(0, 0, 0)
@@ -227,47 +279,7 @@ def process_csv_to_tables(file_path, output_dir):
 
             has_data = False
             table_data = []
-            if "2. Record of engine oil exchange" in sections:
-                for row in sections["2. Record of engine oil exchange"]:
-                    if len(row) >= 2 and row[0].strip('"') != "Time" and row[0].strip('"'):
-                        time = row[0].strip('"')
-                        data = row[2].strip('"') if len(row) > 2 and row[2].strip('"') else "(empty)"
-                        if data != "(empty)":
-                            table_data.append((time, data))
-                            has_data = True
-
-            if has_data:
-                sub_table = cell_right.add_table(rows=1, cols=2)
-                sub_table.style = 'Table Grid'
-                sub_table.autofit = True
-                hdr_cells = sub_table.rows[0].cells
-                hdr_cells[0].text = "Time"
-                hdr_cells[0].paragraphs[0].runs[0].bold = True
-                hdr_cells[0].paragraphs[0].runs[0].font.size = Pt(8)
-                hdr_cells[1].text = "Engine Hours"
-                hdr_cells[1].paragraphs[0].runs[0].bold = True
-                hdr_cells[1].paragraphs[0].runs[0].font.size = Pt(8)
-                for time, data in table_data:
-                    row_cells = sub_table.add_row().cells
-                    row_cells[0].text = time
-                    row_cells[0].paragraphs[0].runs[0].font.size = Pt(8)
-                    row_cells[1].text = data
-                    row_cells[1].paragraphs[0].runs[0].font.size = Pt(8)
-            else:
-                no_data_paragraph = cell_right.add_paragraph("No engine oil exchange records to display.")
-                no_data_paragraph.runs[0].font.size = Pt(8)
-                no_data_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
             if "6. Engine record" in sections:
-                heading_paragraph = cell_right.add_paragraph()
-                heading_run = heading_paragraph.add_run("Engine Record")
-                heading_run.bold = True
-                heading_run.font.size = Pt(10)
-                heading_run.font.color.rgb = RGBColor(0, 0, 0)
-                heading_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-                has_data = False
-                table_data = []
                 for row in sections["6. Engine record"]:
                     if len(row) >= 1 and row[0].strip('"') != "Data item" and row[0].strip('"') != "6. Engine record" and row[0].strip('"'):
                         item = row[0].strip('"')
@@ -276,30 +288,69 @@ def process_csv_to_tables(file_path, output_dir):
                             table_data.append((item, value))
                             has_data = True
 
-                if has_data:
-                    sub_table = cell_right.add_table(rows=1, cols=2)
-                    sub_table.style = 'Table Grid'
-                    sub_table.autofit = True
-                    hdr_cells = sub_table.rows[0].cells
-                    hdr_cells[0].text = "Data Item"
-                    hdr_cells[0].paragraphs[0].runs[0].bold = True
-                    hdr_cells[0].paragraphs[0].runs[0].font.size = Pt(8)
-                    hdr_cells[1].text = "Value"
-                    hdr_cells[1].paragraphs[0].runs[0].bold = True
-                    hdr_cells[1].paragraphs[0].runs[0].font.size = Pt(8)
-                    for item, value in table_data:
-                        row_cells = sub_table.add_row().cells
-                        row_cells[0].text = item
-                        row_cells[0].paragraphs[0].runs[0].font.size = Pt(8)
-                        row_cells[1].text = value
-                        row_cells[1].paragraphs[0].runs[0].font.size = Pt(8)
-                else:
-                    no_data_paragraph = cell_right.add_paragraph("No engine records to display.")
-                    no_data_paragraph.runs[0].font.size = Pt(8)
-                    no_data_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            if has_data:
+                sub_table = cell_left.add_table(rows=1, cols=2)
+                sub_table.style = 'Table Grid'
+                remove_table_outer_borders(sub_table)
+                sub_table.autofit = True
+                hdr_cells = sub_table.rows[0].cells
+                hdr_cells[0].text = "Data Item"
+                hdr_cells[0].paragraphs[0].runs[0].bold = True
+                hdr_cells[0].paragraphs[0].runs[0].font.size = Pt(8)
+                hdr_cells[1].text = "Value"
+                hdr_cells[1].paragraphs[0].runs[0].bold = True
+                hdr_cells[1].paragraphs[0].runs[0].font.size = Pt(8)
+                for item, value in table_data:
+                    row_cells = sub_table.add_row().cells
+                    row_cells[0].text = item
+                    row_cells[0].paragraphs[0].runs[0].font.size = Pt(8)
+                    row_cells[1].text = value
+                    row_cells[1].paragraphs[0].runs[0].font.size = Pt(8)
+            else:
+                no_data_paragraph = cell_left.add_paragraph("No engine records to display.")
+                no_data_paragraph.runs[0].font.size = Pt(8)
+                no_data_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+            # Right cell: Engine Oil Exchange line graph
+            cell_right = content_table.cell(0, 1)
+            heading_paragraph = cell_right.add_paragraph()
+            heading_run = heading_paragraph.add_run("Record of Engine Oil Exchange")
+            heading_run.bold = True
+            heading_run.font.size = Pt(10)
+            heading_run.font.color.rgb = RGBColor(0, 0, 0)
+            heading_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+            times = []
+            hours = []
+            if "2. Record of engine oil exchange" in sections:
+                for row in sections["2. Record of engine oil exchange"]:
+                    if len(row) >= 2 and row[0].strip('"') != "Time" and row[0].strip('"'):
+                        time = row[0].strip('"')
+                        data = row[2].strip('"') if len(row) > 2 and row[2].strip('"') else "(empty)"
+                        if data != "(empty)":
+                            try:
+                                times.append(int(time))
+                                hours.append(float(data))
+                            except ValueError as e:
+                                print(f"Warning: Could not convert time '{time}' or hours '{data}' to number: {str(e)}")
+                                continue
+
+            if times and hours:
+                line_graph_path = os.path.join(output_dir, "engine_oil_exchange_graph.png")
+                create_line_graph(times, hours, line_graph_path)
+                graph_paragraph = cell_right.add_paragraph()
+                graph_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                run = graph_paragraph.add_run()
+                run.add_picture(line_graph_path, width=Inches(3.5), height=Inches(2.5))
+                os.remove(line_graph_path)
+            else:
+                no_data_paragraph = cell_right.add_paragraph("No engine oil exchange records to display.")
+                no_data_paragraph.runs[0].font.size = Pt(8)
+                no_data_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
             doc.add_paragraph()
 
+        # Diagnosis section
         if "3. Diagnosis" in sections:
             print("Processing Diagnosis section...")
             heading_paragraph = doc.add_paragraph()
@@ -323,6 +374,7 @@ def process_csv_to_tables(file_path, output_dir):
             if has_data:
                 table = doc.add_table(rows=1, cols=3)
                 table.style = 'Table Grid'
+                remove_table_outer_borders(table)
                 table.autofit = True
                 hdr_cells = table.rows[0].cells
                 hdr_cells[0].text = "Item"
@@ -340,6 +392,7 @@ def process_csv_to_tables(file_path, output_dir):
                 doc.add_paragraph("No diagnosis records to display.")
             doc.add_paragraph()
 
+        # Engine Monitor section
         if "4. Engine monitor" in sections:
             print("Processing Engine Monitor section...")
             heading_paragraph = doc.add_paragraph()
@@ -362,6 +415,7 @@ def process_csv_to_tables(file_path, output_dir):
             if has_data:
                 table = doc.add_table(rows=1, cols=2)
                 table.style = 'Table Grid'
+                remove_table_outer_borders(table)
                 table.autofit = True
                 hdr_cells = table.rows[0].cells
                 hdr_cells[0].text = "Monitor Item"
@@ -376,6 +430,7 @@ def process_csv_to_tables(file_path, output_dir):
                 doc.add_paragraph("No engine monitor data to display.")
             doc.add_paragraph()
 
+        # Diagnosis Record section
         if "5. Diagnosis record" in sections:
             print("Processing Diagnosis Record section...")
             heading_paragraph = doc.add_paragraph()
@@ -407,6 +462,7 @@ def process_csv_to_tables(file_path, output_dir):
             if has_data:
                 table = doc.add_table(rows=1, cols=4)
                 table.style = 'Table Grid'
+                remove_table_outer_borders(table)
                 table.autofit = True
                 hdr_cells = table.rows[0].cells
                 hdr_cells[0].text = "Item"
@@ -427,6 +483,7 @@ def process_csv_to_tables(file_path, output_dir):
                 doc.add_paragraph("No diagnosis records to display.")
             doc.add_paragraph()
 
+        # Data Comparison Graph section
         if "7. Data comparison graph" in sections:
             print("Processing Data Comparison Graph section...")
             heading_paragraph = doc.add_paragraph()
@@ -456,6 +513,7 @@ def process_csv_to_tables(file_path, output_dir):
             if has_data:
                 table = doc.add_table(rows=1, cols=7)
                 table.style = 'Table Grid'
+                remove_table_outer_borders(table)
                 table.autofit = True
                 hdr_cells = table.rows[0].cells
                 headers = ["Time", "Unit", "Engine Speed [r/min]", "Battery Voltage [V]", 
@@ -525,7 +583,6 @@ def process():
             print(f"Removing uploaded file: {upload_path}")
             os.remove(upload_path)
 
-            # Use urllib.parse.quote for URL encoding
             download_url = url_for('download_file', filename=urllib.parse.quote(output_filename))
             print(f"Generated download URL: {download_url}")
             return jsonify({'success': True, 'download_url': download_url})
