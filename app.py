@@ -170,7 +170,7 @@ def process_csv_to_tables(file_path, output_dir):
             if style.type == 2:
                 print(style.name)
 
-        logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
+        logo_path = os.path.join(os.path.dirname(__file__), "newlogo.png")
         if os.path.exists(logo_path):
             header = doc.sections[0].header
             logo_paragraph = header.add_paragraph()
@@ -542,7 +542,7 @@ def download_file(filename):
 
 @app.route('/logo')
 def serve_logo():
-    logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
+    logo_path = os.path.join(os.path.dirname(__file__), "newlogo.png")
     if os.path.exists(logo_path):
         return send_file(logo_path, mimetype='image/png')
     else:
