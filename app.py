@@ -176,7 +176,7 @@ def process_csv_to_tables(file_path, output_dir):
             logo_paragraph = header.add_paragraph()
             logo_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
             run = logo_paragraph.add_run()
-            run.add_picture(logo_path, width=Inches(3))
+            run.add_picture(logo_path, width=Inches(3.5))  # Increased logo size from 3 to 3.5 inches
             doc.sections[0].header_distance = Inches(0.1)
         else:
             print(f"Error: logo.png not found at {logo_path}. Skipping logo.")
